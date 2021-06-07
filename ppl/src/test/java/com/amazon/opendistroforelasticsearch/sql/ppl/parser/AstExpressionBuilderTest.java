@@ -24,7 +24,6 @@ import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.booleanLi
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.compare;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.defaultFieldsArgs;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.defaultSortFieldArgs;
-import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.defaultSortOptions;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.defaultStatsArgs;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.doubleLiteral;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.equalTo;
@@ -37,10 +36,10 @@ import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.in;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.intLiteral;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.intervalLiteral;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.let;
+import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.longLiteral;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.not;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.nullLiteral;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.or;
-import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.project;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.projectWithArg;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.qualifiedName;
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.relation;
@@ -49,6 +48,7 @@ import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.stringLit
 import static com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL.xor;
 import static java.util.Collections.emptyList;
 
+import com.amazon.opendistroforelasticsearch.sql.ast.expression.AllFields;
 import com.amazon.opendistroforelasticsearch.sql.ast.expression.DataType;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -116,10 +116,28 @@ public class AstExpressionBuilderTest extends AstBuilderTest {
 
   @Test
   public void testLogicalLikeExpr() {
-    assertEqual("source=t a like '_a%b%c_d_'",
+    assertEqual("source=t like(a, '_a%b%c_d_')",
         filter(
             relation("t"),
-            compare("like", field("a"), stringLiteral("_a%b%c_d_"))
+            function("like", field("a"), stringLiteral("_a%b%c_d_"))
+        ));
+  }
+
+  @Test
+  public void testBooleanIsNullFunction() {
+    assertEqual("source=t isnull(a)",
+        filter(
+            relation("t"),
+            function("is null", field("a"))
+        ));
+  }
+
+  @Test
+  public void testBooleanIsNotNullFunction() {
+    assertEqual("source=t isnotnull(a)",
+        filter(
+            relation("t"),
+            function("is not null", field("a"))
         ));
   }
 
@@ -216,7 +234,6 @@ public class AstExpressionBuilderTest extends AstBuilderTest {
     assertEqual("source=t | sort + f",
         sort(
             relation("t"),
-            defaultSortOptions(),
             field("f", defaultSortFieldArgs())
         ));
   }
@@ -226,7 +243,6 @@ public class AstExpressionBuilderTest extends AstBuilderTest {
     assertEqual("source=t | sort - f",
         sort(
             relation("t"),
-            defaultSortOptions(),
             field(
                 "f",
                 argument("asc", booleanLiteral(false)),
@@ -240,7 +256,6 @@ public class AstExpressionBuilderTest extends AstBuilderTest {
     assertEqual("source=t | sort auto(f)",
         sort(
             relation("t"),
-            defaultSortOptions(),
             field(
                 "f",
                 argument("asc", booleanLiteral(true)),
@@ -254,7 +269,6 @@ public class AstExpressionBuilderTest extends AstBuilderTest {
     assertEqual("source=t | sort ip(f)",
         sort(
             relation("t"),
-            defaultSortOptions(),
             field(
                 "f",
                 argument("asc", booleanLiteral(true)),
@@ -268,7 +282,6 @@ public class AstExpressionBuilderTest extends AstBuilderTest {
     assertEqual("source=t | sort num(f)",
         sort(
             relation("t"),
-            defaultSortOptions(),
             field(
                 "f",
                 argument("asc", booleanLiteral(true)),
@@ -282,7 +295,6 @@ public class AstExpressionBuilderTest extends AstBuilderTest {
     assertEqual("source=t | sort str(f)",
         sort(
             relation("t"),
-            defaultSortOptions(),
             field(
                 "f",
                 argument("asc", booleanLiteral(true)),
@@ -333,6 +345,27 @@ public class AstExpressionBuilderTest extends AstBuilderTest {
   }
 
   @Test
+  public void testCountFuncCallExpr() {
+    assertEqual("source=t | stats count() by b",
+        agg(
+            relation("t"),
+            exprList(
+                alias(
+                    "count()",
+                    aggregate("count", AllFields.of())
+                )
+            ),
+            emptyList(),
+            exprList(
+                alias(
+                    "b",
+                    field("b")
+                )),
+            defaultStatsArgs()
+        ));
+  }
+
+  @Test
   public void testEvalFuncCallExpr() {
     assertEqual("source=t | eval f=abs(a)",
         eval(
@@ -344,6 +377,7 @@ public class AstExpressionBuilderTest extends AstBuilderTest {
         ));
   }
 
+  @Ignore("Nested field is not supported in backend yet")
   @Test
   public void testNestedFieldName() {
     assertEqual("source=t | fields field0.field1.field2",
@@ -358,6 +392,19 @@ public class AstExpressionBuilderTest extends AstBuilderTest {
 
   @Test
   public void testFieldNameWithSpecialChars() {
+    assertEqual("source=t | fields `field-0`",
+        projectWithArg(
+            relation("t"),
+            defaultFieldsArgs(),
+            field(
+                qualifiedName("field-0")
+            )
+        ));
+  }
+
+  @Ignore("Nested field is not supported in backend yet")
+  @Test
+  public void testNestedFieldNameWithSpecialChars() {
     assertEqual("source=t | fields `field-0`.`field#1`.`field*2`",
         projectWithArg(
             relation("t"),
@@ -383,13 +430,40 @@ public class AstExpressionBuilderTest extends AstBuilderTest {
 
   @Test
   public void testIntegerLiteralExpr() {
-    assertEqual("source=t a=1",
+    assertEqual("source=t a=1 b=-1",
         filter(
             relation("t"),
-            compare(
-                "=",
-                field("a"),
-                intLiteral(1)
+            and(
+                compare(
+                    "=",
+                    field("a"),
+                    intLiteral(1)
+                ),
+                compare(
+                    "=",
+                    field("b"),
+                    intLiteral(-1)
+                )
+            )
+        ));
+  }
+
+  @Test
+  public void testLongLiteralExpr() {
+    assertEqual("source=t a=1234567890123 b=-1234567890123",
+        filter(
+            relation("t"),
+            and(
+                compare(
+                    "=",
+                    field("a"),
+                    longLiteral(1234567890123L)
+                ),
+                compare(
+                    "=",
+                    field("b"),
+                    longLiteral(-1234567890123L)
+                )
             )
         ));
   }
@@ -451,4 +525,15 @@ public class AstExpressionBuilderTest extends AstBuilderTest {
     );
   }
 
+  @Test
+  public void canBuildKeywordsAsIdentInQualifiedName() {
+    assertEqual(
+        "source=test | fields timestamp",
+        projectWithArg(
+            relation("test"),
+            defaultFieldsArgs(),
+            field("timestamp")
+        )
+    );
+  }
 }

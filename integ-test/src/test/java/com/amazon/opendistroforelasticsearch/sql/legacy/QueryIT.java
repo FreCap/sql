@@ -187,7 +187,6 @@ public class QueryIT extends SQLIntegTestCase {
     checkSelectAllAndFieldAggregationResponseSize(response, "age");
   }
 
-  @Ignore("This failed because there is no alias field in schema of new engine default formatter")
   @Test
   public void selectFieldWithAliasAndGroupBy() {
     String response =
@@ -481,6 +480,22 @@ public class QueryIT extends SQLIntegTestCase {
     Assert.assertEquals("snoopy", hitSource.getString("dog_name"));
     Assert.assertEquals("Hattie", hitSource.getString("holdersName"));
     Assert.assertEquals(4, hitSource.getInt("age"));
+  }
+
+  @Test
+  public void negativeRegexQueryTest() throws IOException {
+    JSONObject response = executeQuery(
+        String.format(Locale.ROOT, "SELECT * " +
+                "FROM %s " +
+                "WHERE NOT(dog_name = REGEXP_QUERY('sn.*', 'INTERSECTION|COMPLEMENT|EMPTY', 10000))",
+            TestsConstants.TEST_INDEX_DOG));
+
+    JSONArray hits = getHits(response);
+    Assert.assertEquals(1, hits.length());
+
+    JSONObject hitSource = getSource(hits.getJSONObject(0));
+    Assert.assertNotEquals("snoopy", hitSource.getString("dog_name"));
+    Assert.assertEquals("rex", hitSource.getString("dog_name"));
   }
 
   @Test
@@ -1723,8 +1738,8 @@ public class QueryIT extends SQLIntegTestCase {
   @Test
   public void caseWhenSwitchTest() throws IOException {
     JSONObject response = executeQuery("SELECT CASE age " +
-        "WHEN '30' THEN '1' " +
-        "WHEN '40' THEN '2' " +
+        "WHEN 30 THEN '1' " +
+        "WHEN 40 THEN '2' " +
         "ELSE '0' END AS cases FROM " + TEST_INDEX_ACCOUNT + " WHERE age IS NOT NULL");
     JSONObject hit = getHits(response).getJSONObject(0);
     String age = hit.query("/_source/age").toString();
@@ -1736,8 +1751,8 @@ public class QueryIT extends SQLIntegTestCase {
   @Test
   public void caseWhenJdbcResponseTest() {
     String response = executeQuery("SELECT CASE age " +
-        "WHEN '30' THEN 'age is 30' " +
-        "WHEN '40' THEN 'age is 40' " +
+        "WHEN 30 THEN 'age is 30' " +
+        "WHEN 40 THEN 'age is 40' " +
         "ELSE 'NA' END AS cases FROM " + TEST_INDEX_ACCOUNT + " WHERE age is not null", "jdbc");
     assertTrue(
         response.contains("age is 30") ||
@@ -1746,6 +1761,7 @@ public class QueryIT extends SQLIntegTestCase {
     );
   }
 
+  @Ignore("This is already supported in new SQL engine")
   @Test
   public void functionInCaseFieldShouldThrowESExceptionDueToIllegalScriptInJdbc() {
     String response = executeQuery(
